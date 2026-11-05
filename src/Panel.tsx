@@ -11,6 +11,8 @@ import type { NodeMode, TractModel, View } from './model';
 
 const WIDE_PX = 560;
 const REGION_ROWS = 40;
+/** Height the connectome's controls take beside the map in a window. */
+const WIDE_CHROME_PX = 170;
 
 const blur = (event: React.MouseEvent<HTMLElement>): void => event.currentTarget.blur();
 const fmt = (n: number): string => n.toLocaleString('en-US');
@@ -176,6 +178,7 @@ function RegionPicker(props: { model: TractModel; view: View }): React.JSX.Eleme
           onClick={() => {
             void model.run('add-region', { volume: current.name, labels: draft });
             setDraft([]);
+            setQuery('');
           }}
         >
           Add ({draft.length})
@@ -553,11 +556,14 @@ export function TractPanel(props: { model: TractModel }): React.JSX.Element {
     );
   }
   const wide = width >= WIDE_PX;
-  const mapWidth = wide ? Math.floor(width - 320 - 8) : Math.floor(width);
-  const connectome = <ConnectomeSection model={model} view={view} width={Math.min(mapWidth, 720)} />;
+  const windowHeight = rootRef.current?.ownerDocument.defaultView?.innerHeight ?? 0;
+  const mapWidth = wide ? Math.floor(Math.min(width - 320 - 8, windowHeight - WIDE_CHROME_PX)) : Math.floor(width);
+  const connectome = <ConnectomeSection model={model} view={view} width={mapWidth} />;
   const left = (
     <>
-      <div className="flex items-baseline gap-1 bg-tvx-panel py-0.5" style={{ position: 'sticky', top: 0, zIndex: 10 }}>
+      {/* Kept in view: the map is taller than the slot, and a refusal off screen is no refusal. */}
+      <div className="flex flex-col gap-0.5 bg-tvx-panel py-0.5" style={{ position: 'sticky', top: 0, zIndex: 10 }}>
+      <div className="flex items-baseline gap-1">
         {view.tracts.length > 1 ? (
           <select
             data-testid="tt-tract"
@@ -585,12 +591,17 @@ export function TractPanel(props: { model: TractModel }): React.JSX.Element {
           {view.subsetNote}
         </p>
       )}
-      {view.busy !== null && <p className="text-tvx-dim">{view.busy}</p>}
+      {view.busy !== null && (
+          <p data-testid="tt-busy" className="text-tvx-dim">
+            {view.busy}
+          </p>
+        )}
       {view.message !== null && (
         <p data-testid="tt-message" className="text-tvx-warn">
           {view.message}
         </p>
       )}
+      </div>
       <SelectSection model={model} view={view} />
       {!wide && connectome}
       <StatsSection model={model} view={view} />

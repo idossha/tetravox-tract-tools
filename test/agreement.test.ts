@@ -3,7 +3,7 @@
 //   pnpm run agreement
 // Skipped without TRACT_TOOLS_REFS. test/reference.test.ts holds the committed subset for CI.
 
-import { readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { assignEndVoxel, assignFromPair, assignRadial, buildConnectome } from '../src/kernels/connectome';
@@ -158,6 +158,21 @@ describe.skipIf(root === undefined)('agreement with MRtrix 3.0.8 on all streamli
     }
     const fromPair = buildConnectome(assignFromPair(f0, f1));
     report.push(`attached pair: ${fromPair.edges.size} edges`);
+
+    // Usage smoke, not an assertion: that weight file belongs to the 200k tractogram.
+    if (existsSync(join(root!, 'weights_first2000.bin'))) {
+      const weights = view(Float32Array, 'weights_first2000.bin', 4);
+      const weighted = buildConnectome(ref, { weights });
+      const expected = view(Float64Array, 'con_w.bin', 8);
+      const size = meta.matrixSize;
+      let diff = 0;
+      for (let i = 0; i < size; i += 1) {
+        for (let j = i; j < size; j += 1) {
+          diff += Math.abs((weighted.edges.get((i + 1) * 2 ** 26 + j + 1)?.weight ?? 0) - expected[i * size + j]!);
+        }
+      }
+      report.push(`weighted smoke (not asserted): sum|diff| against con_w.csv ${diff.toExponential(2)}`);
+    }
 
     // Statistics, from the tsf MRtrix wrote.
     const fa = view(Float32Array, 'fa_tsf.bin', 4);

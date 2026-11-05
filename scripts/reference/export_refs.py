@@ -6,7 +6,10 @@ from pathlib import Path
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).parent))
-from refs import read_all
+from refs import FA, read_all
+
+
+WEIGHTS = Path(FA).parent / "sift2_weights.txt"
 
 
 def main(mx: Path, out: Path) -> None:
@@ -25,6 +28,10 @@ def main(mx: Path, out: Path) -> None:
         m.astype("<f8").tofile(out / f"con_{k}.bin")
     for k, v in r["fa_stats"].items():
         v.astype("<f8").tofile(out / f"fa_{k}.bin")
+    if WEIGHTS.exists():
+        rows = [l for l in WEIGHTS.read_text().splitlines() if not l.startswith("#")]
+        np.array(rows[0].split()[:2000], dtype=np.float32).astype("<f4").tofile(out / "weights_first2000.bin")
+        np.loadtxt(mx / "ref" / "con_w.csv", delimiter=",", comments="#").astype("<f8").tofile(out / "con_w.bin")
     # The engine's mat4 is column-major.
     aff = r["affine"]
     (out / "meta.json").write_text(

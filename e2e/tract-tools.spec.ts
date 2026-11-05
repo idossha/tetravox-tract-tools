@@ -4,6 +4,7 @@
 //   TRACT_TOOLS_MX=<dir> TETRAVOX_CHECKOUT=<tetravox> TRACT_TOOLS_SHOTS=<dir> pnpm run e2e
 // Skips without TRACT_TOOLS_MX.
 
+import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -65,6 +66,36 @@ function stageCatalogue(): string {
   return index;
 }
 
+function launch(modules: string, profile: string): Promise<ElectronApplication> {
+  return electron.launch({
+    executablePath: join(APP_ROOT, 'node_modules/electron/dist/Electron.app/Contents/MacOS/Electron'),
+    args: [APP_ROOT, '--force-color-profile=srgb', `--user-data-dir=${profile}`, '--tvx-search=engine=real&modules=hello'],
+    cwd: APP_ROOT,
+    env: {
+      ...process.env,
+      TETRAVOX_E2E_OFFSCREEN: '1',
+      TETRAVOX_E2E_DISCARD: '1',
+      TETRAVOX_MODULE_DIR: modules,
+      TETRAVOX_EXT_INDEX: stageCatalogue(),
+      TETRAVOX_HOME: mkdtempSync(join(tmpdir(), 'tt-home-')),
+    } as Record<string, string>,
+  });
+}
+
+/** Download, verify, consent, activate: what a user does. */
+async function install(page: Page): Promise<void> {
+  await page.click('[data-testid="module-switcher"]');
+  await page.click('[data-testid="module-switcher-manage"]');
+  await page.click(`[data-testid="extension-install-${ID}"]`);
+  await expect(page.getByTestId('extension-consent-permissions')).toContainText('Write .csv, .txt');
+  await page.click('[data-testid="extension-consent-accept"]');
+  await expect(page.locator(`[data-testid="extension-card-${ID}"]`)).toHaveAttribute('data-state', 'enabled');
+  await page.click('[data-testid="extensions-close"]');
+  await page.click('[data-testid="module-switcher"]');
+  await page.click(`[data-testid="module-switcher-${ID}"]`);
+  await expect(page.getByTestId('tract-tools')).toBeVisible();
+}
+
 type Win = Window & { __tetravox: any };
 
 const settled = (page: Page): Promise<void> =>
@@ -114,6 +145,123 @@ async function clickCell(page: Page, row: number, col: number): Promise<void> {
 
 test.skip(MX === undefined, 'skipping: TRACT_TOOLS_MX is unset');
 
+test('a job file reaches the same operations, and its counts are MRtrix\'s', async () => {
+  const ref = join(MX!, 'ref');
+  const root = mkdtempSync(join(tmpdir(), 'tt-job-'));
+  const store = join(root, 'modules');
+  const profile = join(root, 'profile');
+  const outDir = join(root, 'out');
+  const dir = join(store, ID, '0.1.0');
+  mkdirSync(dir, { recursive: true });
+  mkdirSync(profile);
+  mkdirSync(outDir);
+  const files = ['index.js', 'manifest.json'].map((name) => {
+    const bytes = readFileSync(join(REPO, 'dist', name));
+    writeFileSync(join(dir, name), bytes);
+    return { name, bytes: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex') };
+  });
+  writeFileSync(
+    join(dir, 'tetravox-module.json'),
+    JSON.stringify({ schema: 1, id: ID, version: '0.1.0', installedAt: new Date().toISOString(), files })
+  );
+  writeFileSync(
+    join(profile, 'settings.json'),
+    JSON.stringify({ extensions: { [ID]: { version: '0.1.0', hostApi: 1, grantedAt: new Date().toISOString(), permissions: [] } } })
+  );
+  const [idA] = ints(join(ref, 'top.txt')) as [number];
+  const op = (name: string, args: object): object => ({ type: 'module', module: ID, op: name, args });
+  const job = {
+    scene: { files: [join(MX!, 'sub2k.tck'), join(ref, 'nodes.nii.gz')] },
+    actions: [
+      op('add-region', { volume: 'nodes.nii.gz', labels: String(idA) }),
+      op('export-selection', { out: 'inc_A.txt' }),
+      op('clear', {}),
+      op('connectome', { volume: 'nodes.nii.gz', mode: 'radial', radiusMm: 4 }),
+      op('export-matrix', { out: 'con.csv' }),
+    ],
+  };
+  const jobPath = join(root, 'job.json');
+  writeFileSync(jobPath, JSON.stringify(job));
+  const electronBin = join(APP_ROOT, 'node_modules/electron/dist/Electron.app/Contents/MacOS/Electron');
+  const run = spawnSync(
+    electronBin,
+    [APP_ROOT, `--user-data-dir=${profile}`, '--force-color-profile=srgb', '--job', jobPath, '--out', outDir],
+    { cwd: APP_ROOT, env: { ...process.env, TETRAVOX_MODULE_DIR: store, TETRAVOX_E2E: '1' }, encoding: 'utf8', timeout: 120_000 }
+  );
+  const result = JSON.parse(readFileSync(join(outDir, 'job-result.json'), 'utf8'));
+  expect(result.errors, run.stderr).toEqual([]);
+  expect(result.ok).toBe(true);
+  const expected = ints(join(ref, 'inc_A.sel.txt'));
+  expect(result.outputs[0].result.selected).toBe(expected.length);
+  expect(ints(join(outDir, 'inc_A.txt')).flatMap((v, i) => (v === 1 ? [i] : []))).toEqual(expected);
+  const ours = csv(join(outDir, 'con.csv'));
+  const con = csv(join(ref, 'con_radial.csv'));
+  let sum = 0;
+  for (let i = 0; i < con.length; i += 1) for (let j = i; j < con.length; j += 1) sum += Math.abs(ours[i]![j]! - con[i]![j]!);
+  expect(sum).toBe(0);
+});
+
+// Set TRACT_TOOLS_BIG to a large .tck to measure the UI thread: prints, asserts only that nothing stalls for long.
+test('a large tractogram leaves the UI thread free', async () => {
+  const big = process.env['TRACT_TOOLS_BIG'];
+  test.skip(big === undefined, 'skipping: TRACT_TOOLS_BIG is unset');
+  const ref = join(MX!, 'ref');
+  const modules = mkdtempSync(join(tmpdir(), 'tt-modules-'));
+  const profile = mkdtempSync(join(tmpdir(), 'tt-profile-'));
+  const app = await launch(modules, profile);
+  try {
+    const page = await app.firstWindow();
+    await page.waitForSelector('[data-testid="shell"][data-ready="true"]', { timeout: 60_000 });
+    await install(page);
+    await openFiles(app, page, [join(ref, 'nodes.nii.gz'), big!]);
+    await expect(page.getByTestId('tt-count')).toContainText(' of ', { timeout: 120_000 });
+    await settled(page);
+    const size = await page.evaluate(async () => {
+      const t = (window as unknown as Win).__tetravox;
+      const d = t.store.getState().datasets.find((x: { kind: string }) => x.kind === 'tractogram');
+      await t.engine.setTractBudget(d.id, null);
+      await t.engine.whenSettled();
+      const now = t.store.getState().datasets.find((x: { kind: string }) => x.kind === 'tractogram');
+      return `${now.nStreamlines} of ${now.sourceStreamlines} streamlines, ${now.nPoints} points`;
+    });
+    console.log(size);
+    await page.evaluate(() => {
+      const w = window as unknown as { stalls: number[] };
+      w.stalls = [];
+      new PerformanceObserver((list) => {
+        for (const e of list.getEntries()) w.stalls.push(Math.round(e.duration));
+      }).observe({ entryTypes: ['longtask'] });
+    });
+    const timed = async (label: string, act: () => Promise<void>): Promise<void> => {
+      const t0 = Date.now();
+      await act();
+      await expect(page.getByTestId('tt-busy')).toHaveCount(0, { timeout: 280_000 });
+      console.log(`${label}: ${Date.now() - t0} ms; count ${await page.getByTestId('tt-count').textContent()}`);
+    };
+    const [idA] = ints(join(ref, 'top.txt')) as [number];
+    await timed('first region rule', async () => {
+      await page.getByTestId('tt-region-search').fill(String(idA));
+      await page.getByTestId(`tt-region-${idA}`).check();
+      await page.getByTestId('tt-region-add').click();
+      await expect(page.getByTestId('tt-rule-0')).toBeVisible();
+      await page.waitForTimeout(300);
+    });
+    await timed('include to exclude (cached)', async () => {
+      await page.getByTestId('tt-rule-effect-0').click();
+      await page.waitForTimeout(300);
+    });
+    await timed('radial connectome', async () => {
+      await page.getByTestId('tt-compute').click();
+      await page.waitForTimeout(300);
+    });
+    const stalls = (await page.evaluate(() => (window as unknown as { stalls: number[] }).stalls)).sort((a, b) => b - a);
+    console.log(`long tasks: ${stalls.length}, worst ${stalls.slice(0, 5).join(', ')} ms`);
+    expect(stalls[0] ?? 0).toBeLessThan(1000);
+  } finally {
+    await app.close();
+  }
+});
+
 test('every class the panel names exists in the host stylesheet', () => {
   const assets = join(APP_ROOT, 'out/renderer/assets');
   const css = readdirSync(assets)
@@ -137,22 +285,9 @@ test('every class the panel names exists in the host stylesheet', () => {
 test('install, select, browse a connectome, compute statistics, export, restore', async () => {
   const ref = join(MX!, 'ref');
   const modules = mkdtempSync(join(tmpdir(), 'tt-modules-'));
-  const home = mkdtempSync(join(tmpdir(), 'tt-home-'));
   const profile = mkdtempSync(join(tmpdir(), 'tt-profile-'));
   const out = mkdtempSync(join(tmpdir(), 'tt-out-'));
-  const app = await electron.launch({
-    executablePath: join(APP_ROOT, 'node_modules/electron/dist/Electron.app/Contents/MacOS/Electron'),
-    args: [APP_ROOT, '--force-color-profile=srgb', `--user-data-dir=${profile}`, '--tvx-search=engine=real&modules=hello'],
-    cwd: APP_ROOT,
-    env: {
-      ...process.env,
-      TETRAVOX_E2E_OFFSCREEN: '1',
-      TETRAVOX_E2E_DISCARD: '1',
-      TETRAVOX_MODULE_DIR: modules,
-      TETRAVOX_EXT_INDEX: stageCatalogue(),
-      TETRAVOX_HOME: home,
-    } as Record<string, string>,
-  });
+  const app = await launch(modules, profile);
   try {
     const page = await app.firstWindow();
     await page.waitForSelector('[data-testid="shell"][data-ready="true"]', { timeout: 60_000 });
@@ -162,19 +297,8 @@ test('install, select, browse a connectome, compute statistics, export, restore'
       win.setContentSize(1440, 900);
     });
 
-    // Download, verify, consent.
-    await page.click('[data-testid="module-switcher"]');
-    await page.click('[data-testid="module-switcher-manage"]');
-    await page.click(`[data-testid="extension-install-${ID}"]`);
-    await expect(page.getByTestId('extension-consent-permissions')).toContainText('Write .csv, .txt');
-    await page.click('[data-testid="extension-consent-accept"]');
-    await expect(page.locator(`[data-testid="extension-card-${ID}"]`)).toHaveAttribute('data-state', 'enabled');
-    await page.click('[data-testid="extensions-close"]');
+    await install(page);
     expect(existsSync(join(modules, ID, '0.1.0', 'index.js'))).toBe(true);
-
-    await page.click('[data-testid="module-switcher"]');
-    await page.click(`[data-testid="module-switcher-${ID}"]`);
-    await expect(page.getByTestId('tract-tools')).toBeVisible();
 
     await openFiles(app, page, [join(ref, 'nodes.nii.gz'), join(MX!, 'sub2k.tck')]);
     await expect(page.getByTestId('tt-count')).toHaveText('2,000 of 2,000', { timeout: 60_000 });
@@ -419,8 +543,13 @@ test('install, select, browse a connectome, compute statistics, export, restore'
     await page.click('[data-testid="module-slot-popout"]');
     const win = await popup;
     await expect(win.getByTestId('tt-heatmap')).toBeVisible();
-    const cellPx = Number(await win.getByTestId('tt-heatmap').getAttribute('data-cell'));
-    expect(cellPx).toBeGreaterThan(Number(await page.evaluate(() => 2)));
+    await expect.poll(async () => Number(await win.getByTestId('tt-heatmap').getAttribute('data-cell'))).toBeGreaterThan(2);
+    // The map fits the window, so nothing needs a scroll to reach it.
+    const fits = await win.evaluate(() => {
+      const box = document.querySelector('[data-testid="tt-heatmap"]')!.getBoundingClientRect();
+      return { bottom: box.bottom, height: window.innerHeight };
+    });
+    expect(fits.bottom).toBeLessThanOrEqual(fits.height);
     if (SHOTS !== null) await win.screenshot({ path: join(SHOTS, '6-popout.png') });
   } finally {
     await app.close();

@@ -46,7 +46,7 @@ export function selectionTxt(
   if (selected.length !== sourceStreamlines) {
     return {
       ok: false,
-      reason: `Only ${selected.length.toLocaleString('en-US')} of ${sourceStreamlines.toLocaleString('en-US')} streamlines are held, so a row could not line up with the file. Raise the display budget to all of them first.`,
+      reason: `Only ${selected.length.toLocaleString('en-US')} of ${sourceStreamlines.toLocaleString('en-US')} streamlines are held, so a row could not line up with the file. Raise the display budget if it can hold them all (Tetravox holds at most 25 million points).`,
     };
   }
   const bytes = selected.length * 2;
