@@ -4,6 +4,7 @@ import { assignFromPair, assignRadial, buildConnectome, edgeCategories, edgeKey,
 import { MAX_WRITE_BYTES, matrixCsv, selectionTxt } from '../src/kernels/export';
 import { parseLookup } from '../src/kernels/lut';
 import { combine, lengthToleranceMm, parseHeader, ruleKey } from '../src/kernels/select';
+import type { RegionRule } from '../src/kernels/select';
 import { statInto } from '../src/kernels/stats';
 import { volumeSampler } from './sampler';
 
@@ -62,7 +63,7 @@ describe('combination', () => {
     expect(combine({ n: 2, includes: [], excludes: [], lengths: Float32Array.of(10, 20), minMm: 15, maxMm: null }).count).toBe(1);
   });
   it('a rule key ignores label order and effect, and tells tests apart', () => {
-    const base = { kind: 'region', effect: 'include', endsOnly: false, volume: 'a.nii', labels: [3, 1] } as const;
+    const base: RegionRule = { kind: 'region', effect: 'include', endsOnly: false, volume: 'a.nii', labels: [3, 1] };
     expect(ruleKey(base)).toBe(ruleKey({ ...base, labels: [1, 3], effect: 'exclude' }));
     expect(ruleKey({ ...base, endsOnly: true })).not.toBe(ruleKey(base));
   });

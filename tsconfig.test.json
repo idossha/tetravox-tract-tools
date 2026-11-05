@@ -8,5 +8,5 @@
     "types": ["node"],
     "noEmit": true
   },
-  "include": ["test/**/*.ts", "vitest.config.ts", "rollup.config.mjs"]
+  "include": ["test/**/*.ts", "e2e/**/*.ts", "vitest.config.ts", "rollup.config.mjs"]
 }
