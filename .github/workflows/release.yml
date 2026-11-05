@@ -1,0 +1,34 @@
+# A tagged release: verify, attach the two assets under their own sha256, print the registry fragment.
+name: release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: The existing tag to (re)publish assets for
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.30.3
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run verify
+      - name: Publish the assets, content-addressed
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: scripts/publish-release.sh "${{ inputs.tag || github.ref_name }}" --upload | tee -a "$GITHUB_STEP_SUMMARY"
