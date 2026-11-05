@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  // The module itself: Chromium's half of Tetravox (ARCHITECTURE.md §5 rule 3), so `DOM` and no
+  // `node` types at all. Everything the module may name comes from `@tetravox/module-sdk`, and the
+  // compiler is what proves it — an import this tsconfig cannot resolve is an import the loaded
+  // bundle could not resolve either.
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "moduleDetection": "force",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "skipLibCheck": true,
+
+    "strict": true,
+    "noImplicitOverride": true,
+    "noUncheckedIndexedAccess": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "useUnknownInCatchVariables": true,
+    "forceConsistentCasingInFileNames": true,
+
+    // The classic JSX transform, against the host's React namespace. `react-jsx` would emit
+    // `import { jsx } from 'react/jsx-runtime'` — a bare specifier in the built bundle, which is
+    // exactly the one thing a downloaded module may not contain. `react` here is the SDK's
+    // re-export of the app's own copy, so there is still exactly one React.
+    "jsx": "react",
+    "jsxFactory": "createElement",
+    "jsxFragmentFactory": "react.Fragment",
+    // `React.MouseEvent` and `React.JSX.Element` in `Panel.tsx` are the UMD global's *types*. They
+    // erase to nothing, and reaching them by an `import … from 'react'` would be the second React.
+    "allowUmdGlobalAccess": true,
+
+    "types": [],
+    "noEmit": true
+  },
+  "include": ["src/**/*.ts", "src/**/*.tsx"]
+}

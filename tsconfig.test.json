@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  // The tests and the build's own configuration. Separate from `tsconfig.json` because this half
+  // runs in Node — it reads the contacts kit off disk and installs the host global — and the module
+  // itself must never see a `node` type.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": ["node"],
+    "noEmit": true
+  },
+  "include": ["test/**/*.ts", "vitest.config.ts", "rollup.config.mjs"]
+}

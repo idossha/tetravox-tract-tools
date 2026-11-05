@@ -1,0 +1,36 @@
+{
+  "name": "tetravox-tract-tools",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "tetravox.tract-tools: live streamline selection, connectome browsing and per-streamline statistics, as a downloadable Tetravox extension.",
+  "license": "MIT",
+  "author": "Tetravox contributors",
+  "engines": {
+    "node": ">=22"
+  },
+  "packageManager": "pnpm@10.30.3",
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.test.json",
+    "test": "vitest run",
+    "build": "rollup -c && node scripts/emit-manifest.mjs",
+    "check": "node scripts/check-bundle.mjs && node scripts/validate-manifest.mjs",
+    "sideload": "pnpm run build && node scripts/sideload.mjs",
+    "agreement": "scripts/reference/agreement.sh",
+    "e2e": "pnpm run build && playwright test -c e2e/playwright.config.ts",
+    "verify": "pnpm run typecheck && pnpm run test && pnpm run build && pnpm run check"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.62.1",
+    "@rollup/plugin-node-resolve": "^16.0.3",
+    "@rollup/plugin-typescript": "^12.1.4",
+    "@tetravox/module-sdk": "file:vendor/tetravox-module-sdk-1-0.8.0.tgz",
+    "@types/node": "^26.4.0",
+    "@types/react": "^19.2.18",
+    "react": "^19.2.8",
+    "rollup": "^4.53.3",
+    "tslib": "^2.8.1",
+    "typescript": "~5.9.3",
+    "vitest": "^4.1.11"
+  }
+}
