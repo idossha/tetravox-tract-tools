@@ -1,9 +1,9 @@
 {
   "name": "tetravox-tract-tools",
-  "version": "0.2.0",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "tetravox.tract-tools: live streamline selection, connectome browsing and per-streamline statistics, as a downloadable Tetravox extension.",
+  "description": "tetravox.tract-tools: choose a network From and To regions, see its matrix and tables, and export plain files, covering every streamline in the file.",
   "license": "MIT",
   "author": "Tetravox contributors",
   "engines": {

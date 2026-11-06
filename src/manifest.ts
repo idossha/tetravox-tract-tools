@@ -3,7 +3,7 @@ import type { ModuleManifest } from '@tetravox/module-sdk';
 export const manifest: ModuleManifest = {
   id: 'tetravox.tract-tools',
   title: 'Tract tools',
-  version: '0.2.0',
+  version: '0.1.0',
   hostApi: 1,
   docs: 'https://github.com/idossha/tetravox-tract-tools#readme',
   activation: ['onToggle', 'onSceneBlock'],

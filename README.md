@@ -1,12 +1,12 @@
 # Tract tools: a Tetravox extension
 
-`tetravox.tract-tools` does two plain things with a tractogram you have open: **filter it by regions of interest**, and **show and export a network**: matrices, lengths, statistics and tables. Inputs are the usual ones (`.tck`, `.trk`, `.trx`, a NIfTI atlas or mask, a lookup table, a weights `.txt`, a `.tsf`). Outputs are plain files. Every number uses every streamline in the file, whatever the display budget draws, and agrees with MRtrix 3.0.8 (below).
+`tetravox.tract-tools` does one plain thing with a tractogram you have open: it lets you **choose, show and export a network**: matrices, lengths, statistics and tables. Inputs are the usual ones (`.tck`, `.trk`, `.trx`, a NIfTI atlas or mask, a lookup table, a weights `.txt`, a `.tsf`). Outputs are plain files. Every number uses every streamline in the file, whatever the display budget draws, and agrees with MRtrix 3.0.8 (below).
 
 It needs a Tetravox with `scene.tracts.scan`, `scene.tracts.attachFile`, `scene.openFile`, `files.chooseFolder` and panel tabs. Without them the panel says so and does nothing else.
 
 ## Install
 
-Through **File ▸ Extensions…** once it is catalogued. Before that, from a checkout: `pnpm install && pnpm run sideload`, restart Tetravox, and consent in File ▸ Extensions….
+Through **File ▸ Extensions…**, in Tetravox 0.8.1 or later. From a checkout: `pnpm install && pnpm run sideload`, restart Tetravox, and consent in File ▸ Extensions….
 
 ## Using it
 
