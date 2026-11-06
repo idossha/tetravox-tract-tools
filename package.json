@@ -1,6 +1,6 @@
 {
   "name": "tetravox-tract-tools",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "description": "tetravox.tract-tools: live streamline selection, connectome browsing and per-streamline statistics, as a downloadable Tetravox extension.",
@@ -16,7 +16,7 @@
     "build": "rollup -c && node scripts/emit-manifest.mjs",
     "check": "node scripts/check-bundle.mjs && node scripts/validate-manifest.mjs",
     "sideload": "pnpm run build && node scripts/sideload.mjs",
-    "agreement": "scripts/reference/agreement.sh",
+    "agreement": "vitest run test/agreement.test.ts --disable-console-intercept",
     "e2e": "pnpm run build && playwright test -c e2e/playwright.config.ts",
     "verify": "pnpm run typecheck && pnpm run test && pnpm run build && pnpm run check"
   },

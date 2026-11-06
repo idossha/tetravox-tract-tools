@@ -1,11 +1,11 @@
 // The kernels against the committed subset of MRtrix 3.0.8's outputs (test/fixture/mrtrix.json.gz).
-// Regenerate: python3 scripts/reference/make_fixture.py <mx dir>. `pnpm run agreement` runs all 2000.
+// Regenerate: python3 scripts/reference/make_fixture.py <mx dir>. `pnpm run agreement` runs the whole file.
 
 import { readFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
 import { describe, expect, it } from 'vitest';
 import { assignEndVoxel, assignRadial, buildConnectome, edgeMask } from '../src/kernels/connectome';
-import { combine, lengthsInto, lengthToleranceMm, markRegion, markSphere } from '../src/kernels/select';
+import { combine, lengthsInto, lengthToleranceMm, markSphere, regionHits, RegionIndexBuilder, sphereHits } from '../src/kernels/select';
 import { STATS, statInto } from '../src/kernels/stats';
 import { volumeSampler } from './sampler';
 
@@ -23,16 +23,16 @@ const points = typed(Float32Array, doc.points, 4);
 const span = { offsets, first: 0, last: n, pointBase: 0 };
 
 const mark = (key: string, ends = false): Uint8Array => {
-  const hits = new Uint8Array(n);
-  markRegion(hits, span, Float32Array.from(typed(Uint8Array, doc.roi[key], 1)), new Set([1]), ends);
-  return hits;
+  const builder = new RegionIndexBuilder(n);
+  builder.add(0, offsets, Float32Array.from(typed(Uint8Array, doc.roi[key], 1)));
+  return regionHits(builder.finish(), [1], ends ? 'ends' : 'through');
 };
 const sphere = (center: [number, number, number], radiusMm: number, test: 'point' | 'segment' = 'point'): Uint8Array => {
-  const hits = new Uint8Array(n);
-  markSphere(hits, span, points, { kind: 'sphere', effect: 'include', endsOnly: false, center, radiusMm, test });
-  return hits;
+  const bits = new Uint8Array(n);
+  markSphere(bits, span, points, { center, radiusMm, test });
+  return sphereHits(bits, 'through');
 };
-const selectedIds = (m: Float32Array): number[] => ids.filter((_, i) => m[i] === 1);
+const selectedIds = (m: Uint8Array): number[] => ids.filter((_, i) => m[i] === 1);
 
 const geom = { dims: doc.dims as number[], affine: doc.affine as number[], inverseAffine: doc.inverseAffine as number[] };
 const [nx, ny, nz] = geom.dims as [number, number, number];
@@ -58,22 +58,22 @@ describe('selection against tckedit', () => {
     expect(n).toBeGreaterThan(50);
     for (const k of Object.keys(doc.selections)) expect(doc.selections[k].length).toBeGreaterThan(0);
   });
-  it('include A', () => expect(selectedIds(combine({ n, includes: [mark('A')], excludes: [] }).selected)).toEqual(doc.selections.inc_A));
+  it('include A', () => expect(selectedIds(combine({ n, includes: [mark('A')], excludes: [] }).keep)).toEqual(doc.selections.inc_A));
   it('include A and B', () =>
-    expect(selectedIds(combine({ n, includes: [mark('A'), mark('B')], excludes: [] }).selected)).toEqual(doc.selections.inc_AB));
+    expect(selectedIds(combine({ n, includes: [mark('A'), mark('B')], excludes: [] }).keep)).toEqual(doc.selections.inc_AB));
   it('include A exclude B', () =>
-    expect(selectedIds(combine({ n, includes: [mark('A')], excludes: [mark('B')] }).selected)).toEqual(doc.selections.exc_B));
+    expect(selectedIds(combine({ n, includes: [mark('A')], excludes: [mark('B')] }).keep)).toEqual(doc.selections.exc_B));
   it('include A, ends only', () =>
-    expect(selectedIds(combine({ n, includes: [mark('A', true)], excludes: [] }).selected)).toEqual(doc.selections.ends_A));
-  it('sphere', () => expect(selectedIds(combine({ n, includes: [sphere([0, 0, 10], 12)], excludes: [] }).selected)).toEqual(doc.selections.sph));
+    expect(selectedIds(combine({ n, includes: [mark('A', true)], excludes: [] }).keep)).toEqual(doc.selections.ends_A));
+  it('sphere', () => expect(selectedIds(combine({ n, includes: [sphere([0, 0, 10], 12)], excludes: [] }).keep)).toEqual(doc.selections.sph));
   it('sphere minus sphere', () =>
-    expect(selectedIds(combine({ n, includes: [sphere([0, 0, 10], 12)], excludes: [sphere([20, 0, 10], 8)] }).selected)).toEqual(doc.selections.sph_exc));
+    expect(selectedIds(combine({ n, includes: [sphere([0, 0, 10], 12)], excludes: [sphere([20, 0, 10], 8)] }).keep)).toEqual(doc.selections.sph_exc));
   it('length, with the tolerance tckedit derives from step_size and downsample_factor', () => {
     const lengths = new Float32Array(n);
     lengthsInto(lengths, span, points);
     const toleranceMm = lengthToleranceMm(new Map([['step_size', '0.5'], ['downsample_factor', '3']]));
     const got = combine({ n, includes: [], excludes: [], lengths, minMm: 60, maxMm: 120, toleranceMm });
-    expect(selectedIds(got.selected)).toEqual(doc.selections.len);
+    expect(selectedIds(got.keep)).toEqual(doc.selections.len);
     // This subset carries the streamlines that need the tolerance: without it the count differs.
     expect(combine({ n, includes: [], excludes: [], lengths, minMm: 60, maxMm: 120 }).count).toBeLessThan(got.count);
   });
@@ -102,7 +102,7 @@ describe('assignment against tck2connectome', () => {
   it('radial 8 mm', async () => pairsEqual(await assignRadial(endpoints, geom, 8, sample), typed(Int32Array, doc.assign.rad8, 4)));
   it('samples unresolved endpoints only: resolved ones never reach a second shell', async () => {
     const counted = { points: 0 };
-    const got = await assignRadial(endpoints, geom, 4, volumeSampler(volume, geom, counted));
+    const got = await assignRadial(endpoints, geom, 4, volumeSampler(volume, geom, 0, counted));
     let labelledEnd = 0;
     const end = await assignEndVoxel(endpoints, sample);
     end.forEach((v) => (labelledEnd += v !== 0 ? 1 : 0));
@@ -113,7 +113,9 @@ describe('assignment against tck2connectome', () => {
   });
   it('the matrix counts each assigned streamline once and skips node 0', async () => {
     const assign = typed(Int32Array, doc.assign.radial, 4);
-    const c = buildConnectome(assign);
+    const lengths = new Float32Array(n);
+    lengthsInto(lengths, span, points);
+    const c = buildConnectome(assign, lengths);
     let assigned = 0;
     for (let s = 0; s < n; s += 1) if (assign[s * 2] !== 0 && assign[s * 2 + 1] !== 0) assigned += 1;
     let total = 0;

@@ -1,7 +1,7 @@
 import { createElement } from '@tetravox/module-sdk';
 import type { ModuleHost, ModuleInstance } from '@tetravox/module-sdk';
 import { createModel } from './model';
-import { TractPanel } from './Panel';
+import { TractPanel } from './ui/Panel';
 
 export const activate = (host: ModuleHost): ModuleInstance => {
   const model = createModel(host);

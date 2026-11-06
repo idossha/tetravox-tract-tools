@@ -12,9 +12,15 @@ describe('manifest', () => {
   it('has the version package.json has', () => {
     expect(JSON.parse(readFileSync('package.json', 'utf8')).version).toBe(manifest.version);
   });
-  it('every command is an operation, except the one that is another operation\'s argument (§13.6)', () => {
+  it('every command is an operation, except the crosshair\'s and the folder sheet\'s (§13.6)', () => {
     const ops = new Set(manifest.operations?.map((o) => o.id));
-    expect(manifest.commands.filter((c) => !ops.has(c.id)).map((c) => c.id)).toEqual(['add-region-at-cursor']);
+    expect(manifest.commands.filter((c) => !ops.has(c.id)).map((c) => c.id)).toEqual(['export-folder']);
+  });
+  it('its folder writer may create everything an export writes, and it declares its tabs', () => {
+    const folder = manifest.writers?.find((w) => w.directory === true);
+    expect(folder?.filters.flatMap((f) => f.extensions).sort()).toEqual(['csv', 'json', 'png', 'svg', 'tck', 'txt']);
+    expect(manifest.ui?.panelTabs?.map((t) => t.id)).toEqual(['network', 'export']);
+    expect(manifest.title).toBe('Tract tools');
   });
   it('claims nothing from File > Open', () => {
     for (const r of manifest.readers ?? []) expect(r.match).toBe('^$');

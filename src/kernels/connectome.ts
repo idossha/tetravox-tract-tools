@@ -142,6 +142,7 @@ export async function assignRadial(
       }
     }
     await flush();
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
     at = end;
     if (at < offsets.length) {
       // Any later centre is at least `norm - halfDiagonal` from an endpoint inside its voxel.
@@ -162,57 +163,166 @@ export function assignFromPair(first: Float32Array, second: Float32Array): Int32
   return out;
 }
 
+export type EdgeMetric = 'count' | 'length' | 'weight' | 'value';
+
 export interface Edge {
   a: number;
   b: number;
   count: number;
-  /** Sum of weights; equals `count` with no weight field. */
+  /** Sum of weights; equals `count` with no weights. */
   weight: number;
-  /** Weighted mean of the metric field, or NaN with none. */
-  metric: number;
+  lengthMean: number;
+  lengthMedian: number;
+  lengthMin: number;
+  lengthMax: number;
+  /** Mean of the per-streamline value, or NaN with none. */
+  value: number;
+  /** Where this edge's streamlines are in {@link Connectome.members}. */
+  from: number;
+  to: number;
 }
 
 export interface Connectome {
-  /** Ids with at least one assigned endpoint on a counted streamline, ascending. */
+  /** Ids with an edge, ascending. */
   nodes: number[];
   /** Keyed by {@link edgeKey}. */
   edges: Map<number, Edge>;
+  /** File indices, grouped by edge. */
+  members: Uint32Array;
+  /** Streamlines with both ends assigned. */
+  assigned: number;
 }
 
+export type EdgePair = [number, number];
+export type ShowAction = 'show' | 'hide' | 'invert';
+
 export const edgeKey = (a: number, b: number): number => (a <= b ? a * 2 ** 26 + b : b * 2 ** 26 + a);
+
+/**
+ * The connection search: every word must appear in either region's name, or be either region's id.
+ * So "thalamus" finds all of a region's connections and "thalamus cortex" narrows them to that pair.
+ */
+export function edgeMatches(edge: Pick<Edge, 'a' | 'b'>, query: string, name: (id: number) => string): boolean {
+  const text = `${name(edge.a)} ${name(edge.b)}`.toLowerCase();
+  return query
+    .toLowerCase()
+    .split(/\s+/)
+    .filter((word) => word !== '')
+    .every((word) => text.includes(word) || word === String(edge.a) || word === String(edge.b));
+}
+
+export const metricOf = (e: Edge, metric: EdgeMetric): number =>
+  metric === 'count' ? e.count : metric === 'weight' ? e.weight : metric === 'length' ? e.lengthMean : e.value;
 
 /** A streamline with an unassigned end joins nothing. Self-connections stay, as tck2connectome's diagonal. */
 export function buildConnectome(
   assign: Int32Array,
-  opts: { weights?: Float32Array | null | undefined; metric?: Float32Array | null | undefined } = {}
+  lengths: Float32Array,
+  opts: { weights?: Float32Array | null | undefined; values?: Float32Array | null | undefined } = {}
 ): Connectome {
-  const edges = new Map<number, Edge & { sum: number; metricWeight: number }>();
-  const nodes = new Set<number>();
   const n = assign.length / 2;
+  type Building = Edge & { valueSum: number; valueCount: number; lengthSum: number };
+  const edges = new Map<number, Building>();
+  const nodes = new Set<number>();
+  const owner = new Array<Building | null>(n).fill(null);
+  let assigned = 0;
   for (let s = 0; s < n; s += 1) {
     const u = assign[s * 2]!;
     const v = assign[s * 2 + 1]!;
     if (u === 0 || v === 0) continue;
-    const w = opts.weights == null ? 1 : opts.weights[s]!;
-    if (!Number.isFinite(w)) continue;
+    assigned += 1;
     const key = edgeKey(u, v);
     let e = edges.get(key);
     if (e === undefined) {
-      e = { a: Math.min(u, v), b: Math.max(u, v), count: 0, weight: 0, metric: NaN, sum: 0, metricWeight: 0 };
+      e = {
+        a: Math.min(u, v),
+        b: Math.max(u, v),
+        count: 0,
+        weight: 0,
+        lengthMean: 0,
+        lengthMedian: 0,
+        lengthMin: Infinity,
+        lengthMax: -Infinity,
+        value: NaN,
+        from: 0,
+        to: 0,
+        valueSum: 0,
+        valueCount: 0,
+        lengthSum: 0,
+      };
       edges.set(key, e);
       nodes.add(u);
       nodes.add(v);
     }
+    owner[s] = e;
     e.count += 1;
-    e.weight += w;
-    const value = opts.metric == null ? NaN : opts.metric[s]!;
-    if (Number.isFinite(value)) {
-      e.sum += value * w;
-      e.metricWeight += w;
+    const w = opts.weights == null ? 1 : opts.weights[s]!;
+    if (Number.isFinite(w)) e.weight += w;
+    const l = lengths[s]!;
+    e.lengthSum += l;
+    if (l < e.lengthMin) e.lengthMin = l;
+    if (l > e.lengthMax) e.lengthMax = l;
+    const x = opts.values == null ? NaN : opts.values[s]!;
+    if (Number.isFinite(x)) {
+      e.valueSum += x;
+      e.valueCount += 1;
     }
   }
-  for (const e of edges.values()) if (e.metricWeight > 0) e.metric = e.sum / e.metricWeight;
-  return { nodes: [...nodes].sort((p, q) => p - q), edges };
+  const members = new Uint32Array(assigned);
+  let at = 0;
+  for (const e of edges.values()) {
+    e.from = at;
+    at += e.count;
+    e.to = e.from;
+    e.lengthMean = e.lengthSum / e.count;
+    if (e.valueCount > 0) e.value = e.valueSum / e.valueCount;
+  }
+  for (let s = 0; s < n; s += 1) {
+    const e = owner[s];
+    if (e == null) continue;
+    members[e.to] = s;
+    e.to += 1;
+  }
+  for (const e of edges.values()) {
+    const own = new Float32Array(e.count);
+    for (let i = 0; i < e.count; i += 1) own[i] = lengths[members[e.from + i]!]!;
+    own.sort();
+    const c = own.length;
+    e.lengthMedian = c % 2 === 1 ? own[(c - 1) / 2]! : 0.5 * (own[c / 2 - 1]! + own[c / 2]!);
+  }
+  return { nodes: [...nodes].sort((p, q) => p - q), edges, members, assigned };
+}
+
+export interface NodeStat {
+  id: number;
+  /** Other regions connected, leaving out a self-connection. */
+  degree: number;
+  /** Streamlines to other regions, leaving out a self-connection. */
+  strength: number;
+  /** The same sum in weight. */
+  weight: number;
+}
+
+export function nodeStats(c: Connectome): NodeStat[] {
+  const stats = new Map<number, NodeStat>(c.nodes.map((id) => [id, { id, degree: 0, strength: 0, weight: 0 }]));
+  for (const e of c.edges.values()) {
+    if (e.a === e.b) continue;
+    for (const id of [e.a, e.b]) {
+      const s = stats.get(id)!;
+      s.degree += 1;
+      s.strength += e.count;
+      s.weight += e.weight;
+    }
+  }
+  return [...stats.values()];
+}
+
+/** Connections between different regions, as tck2connectome's off-diagonal; density over the atlas's regions. */
+export function summarize(c: Connectome, regions: number, total: number): { edges: number; density: number; assignedPct: number } {
+  let edges = 0;
+  for (const e of c.edges.values()) if (e.a !== e.b) edges += 1;
+  const possible = (regions * (regions - 1)) / 2;
+  return { edges, density: possible > 0 ? edges / possible : 0, assignedPct: total > 0 ? (100 * c.assigned) / total : 0 };
 }
 
 /** 1 where the streamline is in the edge (`b` given) or touches the node (`b` null). */
@@ -226,6 +336,34 @@ export function edgeMask(assign: Int32Array, a: number, b: number | null): Uint8
     if (b === null ? u === a || v === a : (u === a && v === b) || (u === b && v === a)) mask[s] = 1;
   }
   return mask;
+}
+
+/** 1 where the streamline is in any of these connections. */
+export function edgesMask(assign: Int32Array, pairs: readonly EdgePair[]): Uint8Array {
+  const wanted = new Set(pairs.map(([a, b]) => edgeKey(a, b)));
+  const n = assign.length / 2;
+  const mask = new Uint8Array(n);
+  for (let s = 0; s < n; s += 1) {
+    const u = assign[s * 2]!;
+    const v = assign[s * 2 + 1]!;
+    if (u !== 0 && v !== 0 && wanted.has(edgeKey(u, v))) mask[s] = 1;
+  }
+  return mask;
+}
+
+/**
+ * The ticks after one action on `targets`. `null` means every connection is shown and nothing is
+ * filtered, so ticking the last one lands back there rather than on a list of all of them.
+ */
+export function nextShown(shown: readonly EdgePair[] | null, all: readonly EdgePair[], targets: readonly EdgePair[], action: ShowAction): EdgePair[] | null {
+  const on = new Set((shown ?? all).map(([a, b]) => edgeKey(a, b)));
+  for (const [a, b] of targets) {
+    const key = edgeKey(a, b);
+    if (action === 'show' || (action === 'invert' && !on.has(key))) on.add(key);
+    else on.delete(key);
+  }
+  const next = all.filter(([a, b]) => on.has(edgeKey(a, b)));
+  return next.length === all.length ? null : next.map(([a, b]) => [a, b]);
 }
 
 /** `edge` for the existing group controls: one id per distinct edge, in key order, 0 = unassigned. */

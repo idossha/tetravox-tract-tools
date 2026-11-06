@@ -31,7 +31,7 @@
     "jsx": "react",
     "jsxFactory": "createElement",
     "jsxFragmentFactory": "react.Fragment",
-    // `React.MouseEvent` and `React.JSX.Element` in `Panel.tsx` are the UMD global's *types*. They
+    // `React.MouseEvent` and `React.JSX.Element` in `src/ui/` are the UMD global's *types*. They
     // erase to nothing, and reaching them by an `import … from 'react'` would be the second React.
     "allowUmdGlobalAccess": true,
 

@@ -1,0 +1,18 @@
+{
+  "note": "The same tract, built from operations here and by tckedit in whole_refs.sh; names match the reference files. Region ids come from the real aseg.",
+  "volume": "aseg",
+  "tracts": {
+    "inc_10": [["add-region", { "labels": "10" }]],
+    "inc_10_3": [["add-region", { "labels": "10" }], ["add-region", { "labels": "3" }]],
+    "inc_10_exc_49": [["add-region", { "labels": "10" }], ["add-region", { "labels": "49", "effect": "exclude" }]],
+    "ends_10": [["add-region", { "labels": "10", "mode": "ends" }]],
+    "ends_10_16": [["add-region", { "labels": "10", "mode": "ends" }], ["add-region", { "labels": "16", "mode": "ends" }]],
+    "exc_ends_16": [["add-region", { "labels": "16", "effect": "exclude", "mode": "ends" }]],
+    "sph": [["add-sphere", { "center": [0, 0, 10], "radiusMm": 12 }]],
+    "sph_exc": [["add-sphere", { "center": [0, 0, 10], "radiusMm": 12 }], ["add-sphere", { "center": [20, 0, 10], "radiusMm": 8, "effect": "exclude" }]],
+    "len": [["set-length", { "minMm": 40, "maxMm": 180 }]],
+    "combo": [["add-region", { "labels": "10" }], ["add-region", { "labels": "49", "effect": "exclude" }], ["set-length", { "minMm": 40, "maxMm": 180 }]],
+    "both_10": [["add-region", { "labels": "10", "mode": "both" }]],
+    "both_16": [["add-region", { "labels": "16", "mode": "both" }]]
+  }
+}

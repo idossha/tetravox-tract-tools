@@ -1,27 +1,9 @@
-// Reading a tractogram a chunk at a time, on whole-streamline boundaries.
+// Reading a host call bounded at some item count, and giving the UI thread a turn.
 
-/** `TRACT_READ_CHUNK` in the engine. */
+import { MAX_SAMPLE_POINTS } from './connectome';
+import type { Sampler } from './connectome';
+
 export const READ_CHUNK = 1_000_000;
-
-export interface Chunk {
-  first: number;
-  /** Exclusive. */
-  last: number;
-}
-
-/** Spans of whole streamlines holding at most `maxPoints`, or one streamline when it alone is longer. */
-export function planChunks(offsets: Uint32Array, maxPoints: number = READ_CHUNK): Chunk[] {
-  const n = offsets.length - 1;
-  const out: Chunk[] = [];
-  let first = 0;
-  while (first < n) {
-    let last = first + 1;
-    while (last < n && offsets[last + 1]! - offsets[first]! <= maxPoints) last += 1;
-    out.push({ first, last });
-    first = last;
-  }
-  return out;
-}
 
 /** A range of any length through a reader bounded at `READ_CHUNK` items. */
 export async function readRange(
@@ -34,6 +16,17 @@ export async function readRange(
   const out = new Float32Array(count * stride);
   for (let at = 0; at < count; at += READ_CHUNK) {
     out.set(await read(first + at, Math.min(READ_CHUNK, count - at)), at * stride);
+  }
+  return out;
+}
+
+/** Any number of xyz points through `sampleVolume`'s bound. */
+export async function sampleAll(sample: Sampler, world: Float32Array): Promise<Float32Array> {
+  const n = world.length / 3;
+  if (n <= MAX_SAMPLE_POINTS) return sample(world);
+  const out = new Float32Array(n);
+  for (let at = 0; at < n; at += MAX_SAMPLE_POINTS) {
+    out.set(await sample(world.subarray(at * 3, Math.min(n, at + MAX_SAMPLE_POINTS) * 3)), at);
   }
   return out;
 }

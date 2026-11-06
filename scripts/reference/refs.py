@@ -5,7 +5,6 @@ import nibabel as nb
 import numpy as np
 from nibabel.streamlines import load as load_streamlines
 
-FA = "/Users/idohaber/01_production/tract_network_dev/validation/mrtrix_ref/fa.nii.gz"
 SELECTIONS = ["inc_A", "inc_AB", "exc_B", "ends_A", "sph", "sph_exc", "len"]
 
 

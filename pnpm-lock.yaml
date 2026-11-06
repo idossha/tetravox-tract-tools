@@ -332,7 +332,7 @@ packages:
     resolution: {integrity: sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w==}
 
   '@tetravox/module-sdk@file:vendor/tetravox-module-sdk-1-0.8.0.tgz':
-    resolution: {integrity: sha512-zDOj9eZM3aR4qWeMTrOmjoSzimVNWPHruiYzj1rUJmg6FbdnHx3PiGqfPq2XqwwsjeO8h08FPxh5jiCGZKR7tw==, tarball: file:vendor/tetravox-module-sdk-1-0.8.0.tgz}
+    resolution: {integrity: sha512-7zE7MN4K+vQRXu35VGQOhS8W+yr7YoabbcY9P4WyKDQa8lfndwzuqKc+lnJz+TwiNCeftfX1D+Rx55kDlxAHdg==, tarball: file:vendor/tetravox-module-sdk-1-0.8.0.tgz}
     version: 1.0.0-core.0.8.0
     peerDependencies:
       react: '>=19'

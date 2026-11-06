@@ -5,6 +5,12 @@ import type { StreamlineSpan } from './select';
 export type Stat = 'mean' | 'median' | 'min' | 'max';
 export const STATS: readonly Stat[] = ['mean', 'median', 'min', 'max'];
 
+/** A volume is sampled NaN outside it where tcksample reads 0, so a sampled mean counts those points as 0. */
+export function outsideIsZero(values: Float32Array): Float32Array {
+  for (let i = 0; i < values.length; i += 1) if (Number.isNaN(values[i]!)) values[i] = 0;
+  return values;
+}
+
 /**
  * Non-finite samples are skipped, so a streamline leaving the source image still gets a statistic of
  * what it sampled; one with no finite sample is NaN. `mean` weights each point by half its two adjoining

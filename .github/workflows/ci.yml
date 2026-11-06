@@ -22,5 +22,5 @@ jobs:
       - run: pnpm install --frozen-lockfile
       # Real data and the real app live on the reference machine, so a wired variable here is a mistake.
       - name: The reference variables are unset
-        run: test -z "${TRACT_TOOLS_REFS:-}" && test -z "${TRACT_TOOLS_MX:-}"
+        run: test -z "${TRACT_TOOLS_WHOLE:-}" && test -z "${TRACT_TOOLS_THIN:-}"
       - run: pnpm run verify
